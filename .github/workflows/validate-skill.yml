@@ -1,0 +1,57 @@
+name: validate-skill
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate repository layout and skill metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f SKILL.md
+          test -f agents/openai.yaml
+          test -f references/architecture.md
+          test -f references/schema.md
+          test -f references/update-policy.md
+          test -f references/search-policy.md
+          test -f references/maintenance-policy.md
+          test -f scripts/init_project_memory.py
+          test -f scripts/update_project_memory.py
+          test -f scripts/update_stage_log.py
+          test -f scripts/search_memory.py
+          test -f scripts/generate_report.py
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          skill = Path("SKILL.md").read_text(encoding="utf-8")
+          assert skill.startswith("---\n"), "SKILL.md must start with YAML frontmatter"
+
+          match = re.match(r"^---\n(.*?)\n---\n", skill, re.S)
+          assert match, "Invalid YAML frontmatter block"
+          frontmatter = match.group(1)
+
+          assert re.search(r"^name:\s*codex-mem\s*$", frontmatter, re.M), "Missing or invalid skill name"
+          assert re.search(r'^description:\s*".+"$', frontmatter, re.M), "Missing quoted description"
+          assert "durable decision layer" in skill.lower(), "Core invariant missing"
+          PY
+
+      - name: Compile Python scripts
+        run: python -m py_compile scripts/*.py
