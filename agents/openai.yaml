@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex-mem"
+  short_description: "Lean durable project memory with remember, search, explore, report, and maintain modes."
+  default_prompt: "Use $codex-mem to maintain project_memory.md and project_stage_log.md with low drift, protected human decisions, compact searchable observations, low-overhead recall workflows, and explicit global retention-status maintenance."
