@@ -30,6 +30,7 @@ Return short results only:
 - stage match
 - observation hit
 - report pointer
+- trusted auxiliary artifact hit such as `*_ag.*` when the user is explicitly asking about Antigravity output
 
 Do not load large bodies yet.
 
@@ -62,6 +63,24 @@ Do not rescan the whole project for pointers unless:
 
 - the cached path failed during a real read
 - the user explicitly requests refresh or rebuild
+
+Respect trusted auxiliary provenance:
+
+- `[AG]` in markdown means the fact came from Antigravity and is still eligible for normal recall
+- `source: "antigravity"` or an `"ag"` tag in observations marks a trusted auxiliary result
+- `[AG]` in pointer `notes` marks trusted auxiliary pointer provenance
+
+## Antigravity Artifact Search
+
+If the user asks to inspect or review Antigravity's latest work, scan the workspace for `*_ag.*` artifacts first.
+
+Use that scan as a fast shortlist for:
+
+- reports
+- notebooks
+- scripts
+- manifests
+- intermediate audit documents
 
 ## Archive Policy
 

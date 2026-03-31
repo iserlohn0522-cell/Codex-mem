@@ -9,11 +9,6 @@ Use this skill to maintain durable project memory with low drift and low token o
 
 Treat memory as a durable decision layer, not as a chronological notebook and not as an execution authorization layer.
 
-## Origin
-
-- Inspired in part by `Claude-mem`: https://github.com/thedotmack/claude-mem
-- This `Codex-mem` skill is written for Codex and fully created in Codex.
-
 `codex-mem` is one skill with five internal modes:
 
 - `remember`
@@ -91,6 +86,18 @@ Use for explicit memory hygiene, global retention-status review, archive review,
 8. Never store secrets, credentials, or private keys.
 9. Memory is not execution authorization.
 
+## Antigravity Interop
+
+`Codex-mem` may share the same memory files with Antigravity's `ag-mem` worker.
+
+Compatibility rules:
+
+- Treat `[AG]`-prefixed bullets in `project_memory.md` and `project_stage_log.md` as valid project facts, not as formatting noise.
+- During `maintain` or `report`, preserve `[AG]` provenance where practical if the underlying fact is still worth keeping.
+- Treat observations with `source: "antigravity"` or an `"ag"` tag as trusted auxiliary findings written through the same schema.
+- Treat execution pointer entries whose `notes` include `[AG]` as valid cached pointers rather than malformed metadata.
+- When the user asks to review Antigravity's latest artifacts, locate them by scanning for `*_ag.*` files in the workspace.
+
 ## Core Invariant
 
 Always keep this rule explicit:
@@ -142,11 +149,15 @@ Use this only for searchable high-value detail that affects future work.
 
 Do not use it as a raw run log.
 
+Observations from trusted auxiliary writers remain valid if they keep the native schema. For Antigravity, expect `source: "antigravity"` and an `"ag"` tag.
+
 ### `.codex-mem/execution_pointers.json`
 
 Use this as a cache of high-confidence execution pointers.
 
 Do not place execution pointer cache entries inside `project_memory.md`.
+
+If a trusted auxiliary writer marks pointer provenance in `notes` with `[AG]`, keep that marker during maintenance unless the pointer is being removed entirely.
 
 ## Required Output Sections
 

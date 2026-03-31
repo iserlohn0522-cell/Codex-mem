@@ -39,7 +39,11 @@ def search_observations(path: Path, query: str) -> list[dict[str, str]]:
         if not line.strip():
             continue
         record = json.loads(line)
-        haystack = " ".join(str(record.get(key, "")) for key in ("title", "summary", "details", "kind", "stage_id"))
+        haystack_parts = [str(record.get(key, "")) for key in ("title", "summary", "details", "kind", "stage_id", "source")]
+        tags = record.get("tags", [])
+        if isinstance(tags, list):
+            haystack_parts.extend(str(tag) for tag in tags)
+        haystack = " ".join(haystack_parts)
         if query in haystack.lower():
             hits.append(
                 {

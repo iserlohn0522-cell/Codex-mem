@@ -24,6 +24,7 @@ Rules:
 - update sections in place
 - do not turn it into a diary
 - do not store shell logs or speculative notes
+- `[AG]`-prefixed bullets from a trusted Antigravity writer are valid in-place updates, not schema violations
 
 ### `Current Operating State`
 
@@ -79,6 +80,7 @@ Rules:
 - keep entries short
 - summarize stage outcomes, not every action
 - promote only durable conclusions into `project_memory.md`
+- `[AG]`-prefixed entries are valid stage facts if they follow the same section structure
 
 ## Non-canonical Support Files
 
@@ -108,6 +110,7 @@ Rules:
 - keep details short
 - supersede old records instead of appending duplicates
 - never use this as a raw run log
+- trusted auxiliary writers may set `source: "antigravity"` and include `"ag"` in `tags`
 
 ### `.codex-mem/execution_pointers.json`
 
@@ -128,6 +131,7 @@ Rules:
 - non-canonical cache only
 - high-confidence entries only
 - refresh on failure or explicit request
+- preserve trusted provenance notes such as `[AG]` unless the pointer is removed or superseded
 
 ### Indexes
 

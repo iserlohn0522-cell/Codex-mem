@@ -72,3 +72,15 @@ If memory grows noisy:
 - remove duplicates before adding new summaries
 - prefer replacing or superseding stale items over stacking new ones
 - keep protected human decisions stable unless explicitly approved for change
+
+## Trusted Auxiliary Writers
+
+Antigravity may write into the same memory files through a compatible schema.
+
+During `maintain`:
+
+- treat `[AG]`-prefixed markdown entries as valid facts
+- keep `[AG]` provenance when retaining the fact unless there is a clear reason to normalize it away
+- treat `source: "antigravity"` and `"ag"` tags as trusted provenance markers
+- treat `[AG]` in execution pointer `notes` as useful provenance, not clutter
+- do not delete a valid AG-contributed fact only because it came from Antigravity

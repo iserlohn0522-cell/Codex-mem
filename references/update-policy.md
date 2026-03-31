@@ -27,6 +27,7 @@ Rules:
 - prefer concise bullets over narrative
 - do not append new top-level sections
 - keep historical detail out unless it changes future work
+- if a trusted auxiliary writer inserted a durable fact with an `[AG]` prefix, keep the prefix when practical during compaction or rewrite
 
 ## `project_stage_log.md`
 
@@ -57,6 +58,7 @@ Write rules:
 - prefer one strong observation to several weak ones
 - supersede stale observations instead of appending duplicates
 - use observations for search/report support, not for raw history
+- treat `source: "antigravity"` and `"ag"` tags as trusted provenance markers, not as reasons to discard a valid observation
 
 ## Protected Human Decisions
 
