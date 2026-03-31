@@ -108,6 +108,14 @@ python scripts/update_project_memory.py --global-project <name> --retention-stat
 
 This repository is intended to validate as a Codex skill bundle. Before publishing changes, run your normal local skill validation flow against the repository root.
 
+## Multi-Agent Collaboration
+
+`codex-mem` now supports collaboration with Antigravity and similar sub-worker agents that write into the same memory ecosystem under explicit provenance rules.
+
+See:
+
+- `multi-agent/antigravity/`
+
 ## Attribution
 
 This project borrows ideas and inspiration from `Claude-mem`:
