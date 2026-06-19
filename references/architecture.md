@@ -22,6 +22,7 @@ These are workflow modes, not separate peer skills.
 4. Preserve explicit human control over critical decisions.
 5. Prefer stable schema over feature breadth.
 6. Avoid worker-style infrastructure.
+7. Keep agent provenance neutral and backward compatible.
 
 ## Canonical Truth
 
@@ -38,6 +39,9 @@ Everything else is support infrastructure:
 - `~/.codex/memory/codex-mem/global_memory.md`
 - `~/.codex/memory/codex-mem/projects_index.jsonl`
 - `~/.codex/memory/codex-mem/global_index.sqlite`
+- Codex native memory
+- Claude auto memory
+- conversation summaries and generated reports
 
 Canonical files hold durable project truth. Non-canonical files exist to speed search, reporting, and routing.
 
@@ -61,6 +65,9 @@ codex-mem/
     update_stage_log.py
     search_memory.py
     generate_report.py
+    discover_projects.py
+    refresh_global_memory.py
+    sync_installed_skill.py
 ```
 
 ### Project-local storage
@@ -107,6 +114,8 @@ Generate stage or journey summaries without treating reports as canonical memory
 
 Prune, archive, refresh, and repair memory assets explicitly.
 
+Global refresh is dry-run by default and requires `--apply` to write. It may update only global routing files, backups, and reports.
+
 ## Non-goals
 
 `codex-mem` is not:
@@ -116,5 +125,7 @@ Prune, archive, refresh, and repair memory assets explicitly.
 - a vector memory platform
 - a run log collector
 - an authorization layer
+- a profile deployment system
+- a native-memory ingestion daemon
 
 Memory records context and durable state. It does not authorize execution, submission, escalation, or irreversible actions.

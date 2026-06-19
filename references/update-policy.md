@@ -27,7 +27,7 @@ Rules:
 - prefer concise bullets over narrative
 - do not append new top-level sections
 - keep historical detail out unless it changes future work
-- if a trusted auxiliary writer inserted a durable fact with an `[AG]` prefix, keep the prefix when practical during compaction or rewrite
+- if a trusted auxiliary writer inserted a durable fact with provenance such as `[CC]` or `[AG]`, keep the marker when practical during compaction or rewrite
 
 ## `project_stage_log.md`
 
@@ -58,7 +58,17 @@ Write rules:
 - prefer one strong observation to several weak ones
 - supersede stale observations instead of appending duplicates
 - use observations for search/report support, not for raw history
-- treat `source: "antigravity"` and `"ag"` tags as trusted provenance markers, not as reasons to discard a valid observation
+- treat `source` and tag provenance as useful evidence, not as reasons to discard a valid observation
+
+## Global Card Refresh After `remember`
+
+After a successful canonical update, a targeted global card refresh may be run explicitly:
+
+```powershell
+python scripts/update_project_memory.py --root <project-root> --section "## Current Operating State" --content-file update.md --sync-global-card
+```
+
+This refresh is bounded to the registered current project. It does not scan every project and does not change retention status. If the project is unregistered, report that fact and use explicit maintain/discovery before syncing global routing.
 
 ## Protected Human Decisions
 

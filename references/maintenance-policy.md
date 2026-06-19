@@ -42,7 +42,25 @@ Do not change retention status during ordinary remember/search/report work.
 - refresh broken execution pointers
 - archive completed or obsolete projects
 - promote reusable lessons into global memory
-- update global retention status explicitly through `update_project_memory.py --global-project <name> --retention-status <status>`
+- update global retention status explicitly through `update_project_memory.py --global-project <name> --retention-status <status>` or a targeted `refresh_global_memory.py` maintenance flow
+
+## Initializing Missing Canonical Files
+
+When maintenance finds a project with no canonical memory files, treat initialization as a reviewable add-file operation.
+
+- Create `.MISSING.txt` backup markers for absent `project_memory.md`, `project_stage_log.md`, observations, or execution pointers so the report does not imply previous content existed.
+- Summarize the proposed add-file contents before writing when the user asked for preview or maintenance review.
+- Populate only durable project truth, protected decisions, constraints, rejected routes, unresolved issues, next-step anchors, and reusable stage conclusions.
+- Do not run global refresh apply automatically after initialization. Run a targeted dry-run first, then apply only after the new short routing card is approved.
+
+## Windows and UTF-8 Notes
+
+Use Windows-safe and encoding-explicit commands during maintenance.
+
+- Prefer `New-Item -ItemType Directory -Force -Path <dir>` in PowerShell examples; if `-LiteralPath` fails in a local shell, fall back to `-Path` with a quoted exact path.
+- For Python helpers that print Unicode paths or Chinese report text, configure UTF-8 stdout/stderr or set `PYTHONIOENCODING=utf-8`.
+- Avoid raw non-ASCII regex literals in piped one-off shell scripts when the terminal code page is uncertain. Read UTF-8 files through a script or command that declares encoding explicitly.
+- Treat terminal mojibake as a display issue until direct file inspection confirms actual file corruption.
 
 ## Archive Rules
 
@@ -75,12 +93,14 @@ If memory grows noisy:
 
 ## Trusted Auxiliary Writers
 
-Antigravity may write into the same memory files through a compatible schema.
+Codex, Claude Code, Antigravity, and future tools may write compatible memory records when the user has allowed that workflow.
 
 During `maintain`:
 
-- treat `[AG]`-prefixed markdown entries as valid facts
-- keep `[AG]` provenance when retaining the fact unless there is a clear reason to normalize it away
-- treat `source: "antigravity"` and `"ag"` tags as trusted provenance markers
-- treat `[AG]` in execution pointer `notes` as useful provenance, not clutter
-- do not delete a valid AG-contributed fact only because it came from Antigravity
+- treat valid provenance markers as useful evidence, not clutter
+- preserve `[CC]`, `[AG]`, `source`, and tag provenance when retaining a fact
+- preserve unknown future source strings unless an explicit migration says otherwise
+- do not delete a valid durable fact only because it came from another trusted agent
+- keep agent identity subordinate to explicit user instructions and canonical project memory
+
+See `provenance.md` and `compatibility.md`.

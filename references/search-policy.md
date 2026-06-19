@@ -30,7 +30,7 @@ Return short results only:
 - stage match
 - observation hit
 - report pointer
-- trusted auxiliary artifact hit such as `*_ag.*` when the user is explicitly asking about Antigravity output
+- trusted auxiliary artifact hit when the user explicitly asks about a specific agent or tool output
 
 Do not load large bodies yet.
 
@@ -66,13 +66,13 @@ Do not rescan the whole project for pointers unless:
 
 Respect trusted auxiliary provenance:
 
-- `[AG]` in markdown means the fact came from Antigravity and is still eligible for normal recall
-- `source: "antigravity"` or an `"ag"` tag in observations marks a trusted auxiliary result
-- `[AG]` in pointer `notes` marks trusted auxiliary pointer provenance
+- `[CC]`, `[AG]`, `source`, and tag markers are provenance, not discard reasons
+- unknown future source strings should remain visible
+- provenance does not override canonical project memory
 
-## Antigravity Artifact Search
+## Agent Artifact Search
 
-If the user asks to inspect or review Antigravity's latest work, scan the workspace for `*_ag.*` artifacts first.
+If the user asks to inspect or review a specific agent's latest work, use the relevant compatibility adapter or provenance marker as a shortlist.
 
 Use that scan as a fast shortlist for:
 

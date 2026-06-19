@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Replace one top-level section inside project_memory.md or update global routing status."""
+"""Replace one project_memory.md section and optionally refresh its global card."""
 
 from __future__ import annotations
 
 import argparse
-import json
-from datetime import date
 from pathlib import Path
+import sys
+
+from memory_common import RETENTION_STATUSES, atomic_write_text, compact_update_report
+from refresh_global_memory import run_refresh, update_retention_status
 
 
 SECTION_HEADERS = [
@@ -21,17 +23,6 @@ SECTION_HEADERS = [
     "## Canonical Docs",
 ]
 
-RETENTION_STATUSES = ["active", "warm", "cold", "archived"]
-GLOBAL_HEADERS = [
-    "## Active Projects",
-    "## Warm Projects",
-    "## Cold Projects",
-    "## Archived Projects",
-    "## Shared Lessons",
-    "## Routing Notes",
-]
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -45,6 +36,12 @@ def parse_args() -> argparse.Namespace:
         default=str(Path.home() / ".codex" / "memory" / "codex-mem"),
         help="Directory containing global_memory.md and projects_index.jsonl.",
     )
+    parser.add_argument(
+        "--sync-global-card",
+        action="store_true",
+        help="After a project section update, refresh only this registered project's global card.",
+    )
+    parser.add_argument("--quiet", action="store_true", help="Suppress the compact update report.")
     args = parser.parse_args()
     if args.section and (not args.root or not args.content_file):
         parser.error("--section requires --root and --content-file")
@@ -70,119 +67,14 @@ def replace_section(text: str, section: str, body: str) -> str:
     return "\n".join(lines[:start] + replacement + lines[end:]).rstrip() + "\n"
 
 
-def ensure_global_memory(path: Path) -> None:
-    if path.exists():
-        return
-    skeleton = "\n".join(
-        [
-            "# Global Memory",
-            "",
-            "## Active Projects",
-            "",
-            "- none",
-            "",
-            "## Warm Projects",
-            "",
-            "- none",
-            "",
-            "## Cold Projects",
-            "",
-            "- none",
-            "",
-            "## Archived Projects",
-            "",
-            "- none",
-            "",
-            "## Shared Lessons",
-            "",
-            "- none",
-            "",
-            "## Routing Notes",
-            "",
-            "- none",
-            "",
-        ]
-    )
-    path.write_text(skeleton, encoding="utf-8")
-
-
-def replace_markdown_section(text: str, section: str, body_lines: list[str]) -> str:
-    lines = text.splitlines()
-    try:
-        start = lines.index(section)
-    except ValueError as exc:
-        raise SystemExit(f"Section not found: {section}") from exc
-
-    end = len(lines)
-    for index in range(start + 1, len(lines)):
-        if lines[index].startswith("## "):
-            end = index
-            break
-
-    replacement = [section, "", *body_lines, ""]
-    return "\n".join(lines[:start] + replacement + lines[end:]).rstrip() + "\n"
-
-
-def load_projects_index(path: Path) -> list[dict]:
-    if not path.exists():
-        raise SystemExit(f"Missing projects_index.jsonl: {path}")
-    records: list[dict] = []
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        if raw_line.strip():
-            records.append(json.loads(raw_line))
-    return records
-
-
-def write_projects_index(path: Path, records: list[dict]) -> None:
-    path.write_text("".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records), encoding="utf-8")
-
-
-def build_project_card(record: dict) -> str:
-    project = record["project"]
-    summary = record["summary"].strip()
-    memory_path = record["memory_path"]
-    stage_log_path = record["stage_log_path"]
-    return (
-        f"- `{project}` - {summary} "
-        f"Use `{memory_path}` for current memory and `{stage_log_path}` for stage summaries."
-    )
-
-
-def update_global_status(global_root: Path, project: str, status: str) -> None:
-    global_root.mkdir(parents=True, exist_ok=True)
-    global_memory_path = global_root / "global_memory.md"
-    projects_index_path = global_root / "projects_index.jsonl"
-    ensure_global_memory(global_memory_path)
-    records = load_projects_index(projects_index_path)
-
-    target_record = None
-    for record in records:
-        if record.get("project") == project:
-            target_record = record
-            break
-    if target_record is None:
-        raise SystemExit(f"Project not found in projects_index.jsonl: {project}")
-
-    target_record["status"] = status
-    target_record["last_updated"] = date.today().isoformat()
-    write_projects_index(projects_index_path, records)
-
-    grouped: dict[str, list[str]] = {key: [] for key in RETENTION_STATUSES}
-    for record in records:
-        grouped[record.get("status", "active")].append(build_project_card(record))
-
-    text = global_memory_path.read_text(encoding="utf-8")
-    text = replace_markdown_section(text, "## Active Projects", grouped["active"] or ["- none"])
-    text = replace_markdown_section(text, "## Warm Projects", grouped["warm"] or ["- none"])
-    text = replace_markdown_section(text, "## Cold Projects", grouped["cold"] or ["- none"])
-    text = replace_markdown_section(text, "## Archived Projects", grouped["archived"] or ["- none"])
-    global_memory_path.write_text(text, encoding="utf-8")
-
-
 def main() -> None:
     args = parse_args()
     if args.global_project:
-        update_global_status(Path(args.global_memory_root), args.global_project, args.retention_status)
+        print(
+            "warning: --global-project is a compatibility shim; use refresh_global_memory.py for new workflows.",
+            file=sys.stderr,
+        )
+        update_retention_status(Path(args.global_memory_root), args.global_project, args.retention_status)
         return
 
     root = Path(args.root)
@@ -192,7 +84,34 @@ def main() -> None:
 
     content = Path(args.content_file).read_text(encoding="utf-8")
     updated = replace_section(path.read_text(encoding="utf-8"), args.section, content)
-    path.write_text(updated, encoding="utf-8")
+    atomic_write_text(path, updated)
+
+    sync_note = "- global card refresh not requested"
+    needs_review: list[str] = []
+    if args.sync_global_card:
+        refresh = run_refresh(Path(args.global_memory_root), project_selector=str(root), apply=True)
+        if refresh.status == "success":
+            sync_note = f"- targeted global card refresh: {refresh.report_path or 'no report path'}"
+        elif refresh.status == "unregistered":
+            sync_note = "- targeted global card refresh skipped: project is unregistered"
+            needs_review.append("- Register the project through explicit maintain/discovery before global sync.")
+        else:
+            sync_note = f"- targeted global card refresh blocked: {refresh.status}"
+            needs_review.extend(f"- {warning}" for warning in refresh.warnings)
+
+    if not args.quiet:
+        print(
+            compact_update_report(
+                updated=[f"- replaced section: {args.section}", sync_note],
+                preserved=[
+                    "- protected human decisions require explicit approval to change",
+                    "- memory remains non-authorization context",
+                ],
+                current_anchor="- review project_memory.md Next-Step Anchor for current work",
+                needs_review=needs_review,
+            ),
+            end="",
+        )
 
 
 if __name__ == "__main__":

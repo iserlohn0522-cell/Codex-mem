@@ -4,8 +4,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
+
+from memory_common import load_jsonl
 
 
 def parse_args() -> argparse.Namespace:
@@ -35,10 +36,8 @@ def search_observations(path: Path, query: str) -> list[dict[str, str]]:
     if not path.exists():
         return []
     hits: list[dict[str, str]] = []
-    for line_number, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), start=1):
-        if not line.strip():
-            continue
-        record = json.loads(line)
+    loaded = load_jsonl(path)
+    for line_number, record in enumerate(loaded.records, start=1):
         haystack_parts = [str(record.get(key, "")) for key in ("title", "summary", "details", "kind", "stage_id", "source")]
         tags = record.get("tags", [])
         if isinstance(tags, list):
