@@ -42,7 +42,27 @@ Do not change retention status during ordinary remember/search/report work.
 - refresh broken execution pointers
 - archive completed or obsolete projects
 - promote reusable lessons into global memory
+- merge, demote, supersede, or forget redundant non-canonical global/deep content through the layered maintenance workflow
+- rebalance hot, deep, routing-only, and project-only read priority without silently changing project retention
 - update global retention status explicitly through `update_project_memory.py --global-project <name> --retention-status <status>` or a targeted `refresh_global_memory.py` maintenance flow
+
+## Layered Promotion, Forgetting, and Priority
+
+For project-to-global extraction, global/deep consolidation, forgetting, or
+priority changes, follow `layered-maintenance.md`.
+
+- Extract propositions from canonical project memory; do not copy project
+  narratives wholesale.
+- Compare `AGENTS.md` first, then existing global rules, deep packages, routing
+  cards, and other selected project candidates.
+- Create and verify the retained destination before removing or demoting a
+  support-layer copy.
+- Keep the default-loaded hot layer within a reviewed budget; it must not grow
+  silently merely because more projects were scanned.
+- Treat project retention separately from lesson priority.
+- Native Memory is Codex App-owned and outside all Codex-mem maintenance write
+  sets. OpenViking and similar recall systems may help discover candidates but
+  are never canonical sources or destinations.
 
 ## Initializing Missing Canonical Files
 
@@ -90,6 +110,10 @@ If memory grows noisy:
 - remove duplicates before adding new summaries
 - prefer replacing or superseding stale items over stacking new ones
 - keep protected human decisions stable unless explicitly approved for change
+- run `scripts/check_observations.py --root <project>` before consolidation or
+  migration; malformed lines, duplicate IDs, invalid/missing supersedes targets,
+  cycles, and exact duplicate title/summary pairs must remain visible
+- do not auto-repair malformed JSONL during search, report, or global refresh
 
 ## Trusted Auxiliary Writers
 

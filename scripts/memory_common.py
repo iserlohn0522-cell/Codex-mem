@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import ntpath
 import os
 import posixpath
 import re
 import shutil
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,20 @@ from typing import Any
 
 RETENTION_STATUSES = ("active", "warm", "cold", "archived")
 ACTIVITY_STATES = ("hot", "recent", "idle", "missing")
+ACTIVITY_BANDS = ("recent", "quiet", "historical", "deep_history", "missing")
 FRESHNESS_STATES = ("fresh", "stale", "unknown")
+CANONICAL_TOTAL_TOKEN_HIGH = 8_000
+DEFAULT_LOAD_TOKEN_HIGH = 2_500
+SECTION_TOKEN_HIGH = 1_200
+DEFAULT_LOAD_HEADINGS = frozenset(
+    {
+        "Project Identity",
+        "Current Operating State",
+        "Protected Human Decisions",
+        "Next-Step Anchor",
+        "Unresolved Issues",
+    }
+)
 
 IGNORE_DIR_NAMES = {
     ".git",
@@ -83,6 +97,27 @@ PROVENANCE_ALIASES = {
 class JsonlLoad:
     records: list[dict[str, Any]]
     malformed_lines: list[tuple[int, str, str]]
+    record_lines: list[tuple[int, dict[str, Any]]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ObservationActivity:
+    latest: datetime | None
+    valid_count: int
+    malformed_lines: list[tuple[int, str, str]]
+
+
+def default_codex_home() -> Path:
+    """Resolve the support root from CODEX_HOME before using a local fallback."""
+
+    configured = os.environ.get("CODEX_HOME", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".codex"
+
+
+def default_global_memory_root() -> Path:
+    return default_codex_home() / "memory" / "codex-mem"
 
 
 def utc_now_iso() -> str:
@@ -116,12 +151,43 @@ def path_is_windows_style(value: str) -> bool:
     return bool(re.match(r"^[A-Za-z]:[\\/]", value)) or "\\" in value
 
 
+def path_for_local_access(value: str | Path) -> Path:
+    """Map a Windows drive path to its WSL mount when running under WSL."""
+
+    raw = str(value).strip().strip('"')
+    match = re.match(r"^([A-Za-z]):[\\/](.*)$", raw)
+    if match and os.name != "nt":
+        drive = match.group(1).lower()
+        mount = Path("/mnt") / drive
+        if mount.exists() or os.environ.get("WSL_DISTRO_NAME"):
+            remainder = match.group(2).replace("\\", "/")
+            return Path(f"/mnt/{drive}/{remainder}")
+    return Path(raw)
+
+
+def parent_path_value(value: str | Path) -> str:
+    raw = str(value).strip().strip('"')
+    if path_is_windows_style(raw):
+        return ntpath.dirname(raw)
+    return str(Path(raw).parent)
+
+
 def canonical_path_key(value: str | Path) -> str:
     """Return a stable comparison key for Windows or POSIX-like paths."""
 
     raw = str(value).strip().strip('"')
     if not raw:
         return ""
+    windows_match = re.match(r"^([A-Za-z]):[\\/](.*)$", raw)
+    if windows_match:
+        normalized = ntpath.normpath(raw.replace("/", "\\"))
+        drive, tail = ntpath.splitdrive(normalized)
+        return f"drive:{drive[0].casefold()}:/{tail.lstrip(chr(92)).replace(chr(92), '/')}".casefold()
+    wsl_match = re.match(r"^/mnt/([A-Za-z])(?:/(.*))?$", raw)
+    if wsl_match:
+        drive = wsl_match.group(1).casefold()
+        tail = posixpath.normpath("/" + (wsl_match.group(2) or "")).lstrip("/")
+        return f"drive:{drive}:/{tail}".casefold()
     if path_is_windows_style(raw):
         normalized = ntpath.normpath(raw.replace("/", "\\"))
         return ntpath.normcase(normalized)
@@ -130,7 +196,7 @@ def canonical_path_key(value: str | Path) -> str:
 
 
 def resolved_path_key(path: str | Path) -> str:
-    candidate = Path(path)
+    candidate = path_for_local_access(path)
     try:
         resolved = candidate.resolve()
     except OSError:
@@ -139,7 +205,7 @@ def resolved_path_key(path: str | Path) -> str:
 
 
 def git_root_for(path: str | Path) -> Path | None:
-    candidate = Path(path)
+    candidate = path_for_local_access(path)
     if candidate.is_file():
         candidate = candidate.parent
     try:
@@ -228,6 +294,7 @@ def load_jsonl(path: Path) -> JsonlLoad:
         return JsonlLoad([], [])
     records: list[dict[str, Any]] = []
     malformed: list[tuple[int, str, str]] = []
+    record_lines: list[tuple[int, dict[str, Any]]] = []
     for line_number, raw_line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), start=1):
         if not raw_line.strip():
             continue
@@ -238,9 +305,10 @@ def load_jsonl(path: Path) -> JsonlLoad:
             continue
         if isinstance(parsed, dict):
             records.append(parsed)
+            record_lines.append((line_number, parsed))
         else:
             malformed.append((line_number, raw_line, "JSONL record is not an object"))
-    return JsonlLoad(records, malformed)
+    return JsonlLoad(records, malformed, record_lines)
 
 
 def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
@@ -258,6 +326,52 @@ def parse_markdown_sections(text: str) -> dict[str, list[str]]:
         elif current is not None:
             sections[current].append(line)
     return sections
+
+
+def estimate_tokens(text: str) -> int:
+    if not text:
+        return 0
+    cjk = sum(
+        1
+        for char in text
+        if (
+            "\u3400" <= char <= "\u4dbf"
+            or "\u4e00" <= char <= "\u9fff"
+            or "\uf900" <= char <= "\ufaff"
+            or "\u3040" <= char <= "\u30ff"
+            or "\uac00" <= char <= "\ud7af"
+        )
+    )
+    return max(1, cjk + math.ceil((len(text) - cjk) / 4))
+
+
+def project_memory_size_diagnostics(text: str) -> dict[str, Any]:
+    sections = parse_markdown_sections(text)
+    section_tokens = {
+        heading: estimate_tokens(
+            "\n".join([f"## {heading}", *lines])
+        )
+        for heading, lines in sections.items()
+    }
+    largest_section = (
+        max(section_tokens, key=lambda heading: section_tokens[heading])
+        if section_tokens
+        else None
+    )
+    return {
+        "canonical_estimated_tokens": estimate_tokens(text),
+        "default_load_estimated_tokens": sum(
+            section_tokens.get(heading, 0)
+            for heading in DEFAULT_LOAD_HEADINGS
+        ),
+        "largest_section": largest_section,
+        "largest_section_estimated_tokens": (
+            section_tokens[largest_section]
+            if largest_section is not None
+            else 0
+        ),
+        "section_tokens": section_tokens,
+    }
 
 
 def clean_field_value(value: str) -> str:
@@ -302,14 +416,22 @@ def parse_project_memory(path: Path) -> dict[str, str]:
     }
 
 
-def latest_observation_time(path: Path) -> datetime | None:
+def scan_observation_activity(path: Path) -> ObservationActivity:
     loaded = load_jsonl(path)
     latest: datetime | None = None
     for record in loaded.records:
         parsed = parse_iso_datetime(record.get("ts"))
         if parsed and (latest is None or parsed > latest):
             latest = parsed
-    return latest
+    return ObservationActivity(
+        latest=latest,
+        valid_count=len(loaded.records),
+        malformed_lines=loaded.malformed_lines,
+    )
+
+
+def latest_observation_time(path: Path) -> datetime | None:
+    return scan_observation_activity(path).latest
 
 
 def classify_activity(latest_activity: datetime | None, exists: bool, now: datetime | None = None) -> str:
@@ -324,6 +446,31 @@ def classify_activity(latest_activity: datetime | None, exists: bool, now: datet
     if age_days <= 30:
         return "recent"
     return "idle"
+
+
+def classify_activity_band(
+    latest_activity: datetime | None,
+    exists: bool,
+    now: datetime | None = None,
+) -> str:
+    """Classify project recency without changing human-controlled retention."""
+
+    if not exists:
+        return "missing"
+    if latest_activity is None:
+        return "deep_history"
+    now = now or datetime.now(timezone.utc)
+    age_days = max(
+        0.0,
+        (now - latest_activity.astimezone(timezone.utc)).total_seconds() / 86400,
+    )
+    if age_days <= 30:
+        return "recent"
+    if age_days <= 90:
+        return "quiet"
+    if age_days <= 180:
+        return "historical"
+    return "deep_history"
 
 
 def classify_freshness(memory_time: datetime | None, latest_activity: datetime | None, exists: bool) -> tuple[str, str]:

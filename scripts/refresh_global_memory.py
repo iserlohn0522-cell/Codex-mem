@@ -21,15 +21,19 @@ from memory_common import (
     backup_file,
     canonical_path_key,
     classify_activity,
+    classify_activity_band,
     classify_freshness,
+    default_global_memory_root,
     datetime_to_iso,
     file_mtime_iso,
     git_root_for,
-    latest_observation_time,
     load_jsonl,
+    parent_path_value,
+    path_for_local_access,
     parse_iso_datetime,
     parse_project_memory,
     resolved_path_key,
+    scan_observation_activity,
     sha256_file,
     utc_now_iso,
     write_jsonl,
@@ -43,13 +47,22 @@ PROJECT_HEADERS = {
     "archived": "## Archived Projects",
 }
 
+MANUAL_RULES_BEGIN = "<!-- MANUAL_RULES:BEGIN -->"
+MANUAL_RULES_END = "<!-- MANUAL_RULES:END -->"
+GENERATED_PROJECT_CARDS_BEGIN = (
+    "<!-- GENERATED_PROJECT_CARDS:BEGIN source=projects_index.jsonl DO_NOT_EDIT -->"
+)
+GENERATED_PROJECT_CARDS_END = "<!-- GENERATED_PROJECT_CARDS:END -->"
+END_MARKER_PATTERN = re.compile(r"^<!--\s*[A-Z0-9_-]+:END(?:\s+.*?)?\s*-->$")
+
 GLOBAL_HEADERS = [
+    "## Global Hot Rules",
+    "## Deep Memory Routing",
+    "## Deferred Deep Migration",
     "## Active Projects",
     "## Warm Projects",
     "## Cold Projects",
     "## Archived Projects",
-    "## Shared Lessons",
-    "## Routing Notes",
 ]
 
 
@@ -92,7 +105,7 @@ def selector_points_to_project_root(selector: str | None) -> bool:
     if not selector:
         return False
     try:
-        path = Path(selector)
+        path = path_for_local_access(selector)
     except (OSError, ValueError):
         return False
     return (path / "project_memory.md").exists()
@@ -116,7 +129,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--global-memory-root",
-        default=str(Path.home() / ".codex" / "memory" / "codex-mem"),
+        default=str(default_global_memory_root()),
         help="Directory containing global_memory.md and projects_index.jsonl.",
     )
     parser.add_argument("--workspace-root", action="append", default=[], help="Allowlisted workspace root.")
@@ -142,6 +155,21 @@ def ensure_global_memory_text(path: Path) -> str:
         [
             "# Global Memory",
             "",
+            MANUAL_RULES_BEGIN,
+            "## Global Hot Rules",
+            "",
+            "- none",
+            "",
+            "## Deep Memory Routing",
+            "",
+            "- none",
+            "",
+            "## Deferred Deep Migration",
+            "",
+            "- none",
+            MANUAL_RULES_END,
+            "",
+            GENERATED_PROJECT_CARDS_BEGIN,
             "## Active Projects",
             "",
             "- none",
@@ -157,14 +185,7 @@ def ensure_global_memory_text(path: Path) -> str:
             "## Archived Projects",
             "",
             "- none",
-            "",
-            "## Shared Lessons",
-            "",
-            "- none",
-            "",
-            "## Routing Notes",
-            "",
-            "- none",
+            GENERATED_PROJECT_CARDS_END,
             "",
         ]
     )
@@ -181,7 +202,7 @@ def replace_markdown_section(text: str, header: str, body_lines: list[str]) -> s
         return "\n".join(lines).rstrip() + "\n"
     end = len(lines)
     for index in range(start + 1, len(lines)):
-        if lines[index].startswith("## "):
+        if lines[index].startswith("## ") or END_MARKER_PATTERN.fullmatch(lines[index].strip()):
             end = index
             break
     replacement = [header, "", *body_lines, ""]
@@ -250,13 +271,18 @@ def project_matches(record: dict[str, Any], selector: str) -> bool:
     for path in paths:
         if path and canonical_path_key(str(path)) == selector_key:
             return True
-    if Path(selector).exists():
+    selector_access = path_for_local_access(selector)
+    if selector_access.exists():
         try:
-            selector_resolved = resolved_path_key(selector)
+            selector_resolved = resolved_path_key(selector_access)
         except OSError:
             selector_resolved = selector_key
         for path in paths:
-            if path and Path(str(path)).exists() and resolved_path_key(str(path)) == selector_resolved:
+            if (
+                path
+                and path_for_local_access(str(path)).exists()
+                and resolved_path_key(str(path)) == selector_resolved
+            ):
                 return True
     return False
 
@@ -356,24 +382,38 @@ def enforce_card_limit(card: str, limit: int, record: dict[str, Any]) -> str:
     memory_path = record.get("memory_path", "")
     summary = truncate_deterministic(record.get("compact_summary") or record.get("summary") or "no summary", 90)
     stale = record.get("memory_freshness") == "stale"
+    label = f"Retention: {status}; activity: {activity}"
     if stale:
-        card = f"- `{project}` - {summary}. Status: {status}/{activity}; memory stale, read `{memory_path}` before project work."
+        card = f"- `{project}` - {summary}. {label}; memory stale, read `{memory_path}` before project work."
     else:
-        card = f"- `{project}` - {summary}. Status: {status}/{activity}; read `{memory_path}`."
+        card = f"- `{project}` - {summary}. {label}; read `{memory_path}`."
     if len(card) <= limit:
         return card
     summary = truncate_deterministic(summary, 45)
-    card = f"- `{project}` - {summary}. Status: {status}/{activity}; read `{memory_path}`."
+    card = f"- `{project}` - {summary}. {label}; read `{memory_path}`."
     if len(card) <= limit:
         return card
     return card[: max(0, limit - 3)].rstrip(" .;,-") + "..."
 
 
-def analyze_project(existing: dict[str, Any], scan_time: str) -> dict[str, Any]:
+def analyze_project(
+    existing: dict[str, Any],
+    scan_time: str,
+    warnings: list[str] | None = None,
+) -> dict[str, Any]:
     record = dict(existing)
-    root_path = Path(str(record.get("root_path") or Path(str(record.get("memory_path", ""))).parent))
-    memory_path = Path(str(record.get("memory_path") or root_path / "project_memory.md"))
-    stage_log_path = Path(str(record.get("stage_log_path") or root_path / "project_stage_log.md"))
+    memory_display = str(record.get("memory_path") or "")
+    root_display = str(
+        record.get("root_path")
+        or (parent_path_value(memory_display) if memory_display else "")
+    )
+    root_path = path_for_local_access(root_display)
+    memory_display = memory_display or str(root_path / "project_memory.md")
+    stage_log_display = str(
+        record.get("stage_log_path") or root_path / "project_stage_log.md"
+    )
+    memory_path = path_for_local_access(memory_display)
+    stage_log_path = path_for_local_access(stage_log_display)
     observations_path = root_path / ".codex-mem" / "observations.jsonl"
     exists = root_path.exists() and memory_path.exists()
 
@@ -398,25 +438,34 @@ def analyze_project(existing: dict[str, Any], scan_time: str) -> dict[str, Any]:
         if raw_field not in existing:
             record.pop(raw_field, None)
 
-    record["root_path"] = str(root_path)
-    record["memory_path"] = str(memory_path)
-    record["stage_log_path"] = str(stage_log_path)
+    record["root_path"] = root_display
+    record["memory_path"] = memory_display
+    record["stage_log_path"] = stage_log_display
     record["status"] = record.get("status") or record.get("retention_status") or "active"
     if record["status"] not in RETENTION_STATUSES:
         record["status"] = "active"
 
     memory_time = parse_iso_datetime(file_mtime_iso(memory_path))
     stage_time = parse_iso_datetime(file_mtime_iso(stage_log_path))
-    observation_time = latest_observation_time(observations_path)
+    observation_activity = scan_observation_activity(observations_path)
+    observation_time = observation_activity.latest
+    if observation_activity.malformed_lines and warnings is not None:
+        line_numbers = ", ".join(
+            str(line) for line, _raw, _error in observation_activity.malformed_lines
+        )
+        warnings.append(
+            f"{observations_path}: skipped "
+            f"{len(observation_activity.malformed_lines)} malformed observation line(s) "
+            f"during activity analysis (physical lines: {line_numbers})"
+        )
     commit_time = git_latest_commit_time(root_path)
     dirty = git_has_changes(root_path)
-    dirty_time = parse_iso_datetime(scan_time) if dirty else None
-    latest_activity = max_datetime([memory_time, stage_time, observation_time, commit_time, dirty_time])
+    latest_activity = max_datetime([memory_time, stage_time, observation_time, commit_time])
     freshness, stale_reason = classify_freshness(memory_time, latest_activity, exists)
 
-    record["last_scanned"] = record.get("last_scanned") or scan_time
+    record["last_scanned"] = scan_time
     if exists:
-        record["last_verified"] = record.get("last_verified") or scan_time
+        record["last_verified"] = scan_time
     record["verified_path_exists"] = exists
     record["memory_last_updated"] = datetime_to_iso(memory_time)
     record["stage_log_last_updated"] = datetime_to_iso(stage_time)
@@ -424,6 +473,11 @@ def analyze_project(existing: dict[str, Any], scan_time: str) -> dict[str, Any]:
     record["git_latest_commit_time"] = datetime_to_iso(commit_time)
     record["git_has_changes"] = dirty
     record["activity_state"] = classify_activity(latest_activity, exists, parse_iso_datetime(scan_time))
+    record["activity_band"] = classify_activity_band(
+        latest_activity,
+        exists,
+        parse_iso_datetime(scan_time),
+    )
     record["memory_freshness"] = freshness
     if stale_reason:
         record["stale_reason"] = compact_stale_reason(stale_reason)
@@ -441,16 +495,17 @@ def compact_project_card(record: dict[str, Any]) -> str:
     memory_path = record.get("memory_path", "")
     freshness = record.get("memory_freshness", "unknown")
     limit = COLD_ARCHIVED_ABSOLUTE_MAX if status in {"cold", "archived"} else ACTIVE_WARM_ABSOLUTE_MAX
+    label = f"Retention: {status}; activity: {activity}"
 
     if status in {"cold", "archived"}:
-        card = f"- `{project}` - {summary}. Memory: `{memory_path}`."
+        card = f"- `{project}` - {summary}. {label}. Memory: `{memory_path}`."
         return enforce_card_limit(card, limit, record)
 
     if freshness == "stale":
-        card = f"- `{project}` - {summary}. Status: {status}/{activity}; memory stale, read `{memory_path}` before project work."
+        card = f"- `{project}` - {summary}. {label}; memory stale, read `{memory_path}` before project work."
         return enforce_card_limit(card, limit, record)
 
-    parts = [f"- `{project}` - {summary}. Status: {status}/{activity}."]
+    parts = [f"- `{project}` - {summary}. {label}."]
     if record.get("compact_stage"):
         parts.append(f"Stage: {record['compact_stage']}.")
     if record.get("compact_objective"):
@@ -475,8 +530,72 @@ def validate_global_card(project: str, status: str, freshness: str, card: str) -
     return errors
 
 
-def validate_refresh_plan(old_records: list[dict[str, Any]], new_records: list[dict[str, Any]], global_text: str) -> list[str]:
+def marker_layout_present(text: str) -> bool:
+    return "<!-- MANUAL_RULES:" in text or "<!-- GENERATED_PROJECT_CARDS:" in text
+
+
+def extract_marker_block(text: str, begin: str, end: str) -> str | None:
+    if text.count(begin) != 1 or text.count(end) != 1:
+        return None
+    start = text.index(begin)
+    finish = text.index(end)
+    if finish < start:
+        return None
+    return text[start : finish + len(end)]
+
+
+def validate_global_boundaries(text: str) -> list[str]:
+    if not marker_layout_present(text):
+        return []
     errors: list[str] = []
+    markers = (
+        MANUAL_RULES_BEGIN,
+        MANUAL_RULES_END,
+        GENERATED_PROJECT_CARDS_BEGIN,
+        GENERATED_PROJECT_CARDS_END,
+    )
+    for marker in markers:
+        count = text.count(marker)
+        if count != 1:
+            errors.append(f"global memory marker must occur exactly once: {marker} (found {count})")
+    if errors:
+        return errors
+    manual_begin = text.index(MANUAL_RULES_BEGIN)
+    manual_end = text.index(MANUAL_RULES_END)
+    generated_begin = text.index(GENERATED_PROJECT_CARDS_BEGIN)
+    generated_end = text.index(GENERATED_PROJECT_CARDS_END)
+    if not manual_begin < manual_end < generated_begin < generated_end:
+        errors.append("global memory marker order is invalid")
+        return errors
+    for header in PROJECT_HEADERS.values():
+        count = text.count(header)
+        if count != 1:
+            errors.append(f"generated project header must occur exactly once: {header} (found {count})")
+            continue
+        position = text.index(header)
+        if not generated_begin < position < generated_end:
+            errors.append(f"generated project header is outside generated marker block: {header}")
+    return errors
+
+
+def validate_refresh_plan(
+    old_records: list[dict[str, Any]],
+    new_records: list[dict[str, Any]],
+    global_text: str,
+    old_global_text: str | None = None,
+) -> list[str]:
+    errors: list[str] = []
+    if old_global_text is not None:
+        errors.extend(
+            f"existing global memory: {error}"
+            for error in validate_global_boundaries(old_global_text)
+        )
+    errors.extend(validate_global_boundaries(global_text))
+    if old_global_text is not None and marker_layout_present(old_global_text):
+        old_manual = extract_marker_block(old_global_text, MANUAL_RULES_BEGIN, MANUAL_RULES_END)
+        new_manual = extract_marker_block(global_text, MANUAL_RULES_BEGIN, MANUAL_RULES_END)
+        if old_manual is not None and new_manual is not None and old_manual != new_manual:
+            errors.append("refresh changed the MANUAL_RULES block")
     old_by_project = {str(record.get("project")): record for record in old_records}
     for record in new_records:
         project = str(record.get("project", "(unnamed)"))
@@ -554,7 +673,10 @@ def find_or_register_discovered(
         warnings.append(f"project not found: {selector}")
         return [], warnings, "not_found"
 
-    return [dict(record) for record in records], warnings, "ok"
+    # With no selector, render the registered index as-is. Re-analysis is an
+    # explicit targeted or --all-projects maintenance action; this keeps the
+    # default dry-run idempotent and avoids timestamp-only index churn.
+    return [], warnings, "ok"
 
 
 def build_refresh_plan(
@@ -574,14 +696,25 @@ def build_refresh_plan(
     effective_current_project = current_project
     if project_selector and current_project is None and selector_points_to_project_root(project_selector):
         effective_current_project = project_selector
-    discovered, discovery_warnings = discover_projects(
-        global_root,
-        current_project=effective_current_project,
-        workspace_roots=workspace_roots or [],
-        config_path=config_path,
-        max_depth=max_depth,
+    selector_is_registered = bool(
+        project_selector
+        and any(project_matches(record, project_selector) for record in records)
     )
-    discovered_records = [asdict(item) for item in discovered]
+    needs_discovery = all_projects or (
+        bool(project_selector) and not selector_is_registered
+    )
+    if needs_discovery:
+        discovered, discovery_warnings = discover_projects(
+            global_root,
+            current_project=effective_current_project,
+            workspace_roots=workspace_roots or [],
+            config_path=config_path,
+            max_depth=max_depth,
+        )
+        discovered_records = [asdict(item) for item in discovered]
+    else:
+        discovered_records = []
+        discovery_warnings = []
     selected, selection_warnings, selection_status = find_or_register_discovered(
         records, discovered_records, project_selector, all_projects
     )
@@ -592,11 +725,14 @@ def build_refresh_plan(
         return "", "", records, warnings, [], selection_status
 
     selected_keys = {canonical_path_key(record.get("root_path", "")) for record in selected if record.get("root_path")}
-    updated_by_key = {
-        canonical_path_key(record.get("root_path", "")): analyze_project(record, stamp)
-        for record in selected
-        if record.get("root_path")
-    }
+    analysis_warnings: list[str] = []
+    updated_by_key: dict[str, dict[str, Any]] = {}
+    for record in selected:
+        if not record.get("root_path"):
+            continue
+        key = canonical_path_key(record.get("root_path", ""))
+        updated_by_key[key] = analyze_project(record, stamp, analysis_warnings)
+    warnings.extend(analysis_warnings)
     final_records: list[dict[str, Any]] = []
     changed_projects: list[str] = []
     existing_keys: set[str] = set()
@@ -616,14 +752,19 @@ def build_refresh_plan(
                 changed_projects.append(str(updated.get("project", key)))
                 final_records.append(updated)
     elif not project_selector and not all_projects:
-        # Default scope is registered projects only.
+        # Default scope re-renders registered cards without rescanning roots.
         pass
 
     old_index_text = index_path.read_text(encoding="utf-8") if index_path.exists() else ""
     new_index_text = "".join(json.dumps(record, ensure_ascii=False, sort_keys=False) + "\n" for record in final_records)
     old_global_text = ensure_global_memory_text(global_memory_path)
     new_global_text = render_global_memory(old_global_text, final_records)
-    validation_errors = validate_refresh_plan(records, final_records, new_global_text)
+    validation_errors = validate_refresh_plan(
+        records,
+        final_records,
+        new_global_text,
+        old_global_text=old_global_text,
+    )
     if validation_errors:
         return new_global_text, new_index_text, final_records, warnings + validation_errors, changed_projects, "validation_failed"
     return new_global_text, new_index_text, final_records, warnings, changed_projects, "ok"

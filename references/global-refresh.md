@@ -8,6 +8,12 @@ Default behavior is dry-run:
 python scripts/refresh_global_memory.py --global-memory-root C:\path\to\codex-mem
 ```
 
+With no `--project` or `--all-projects`, the command re-renders cards from the
+registered index without rescanning project roots or changing scan metadata.
+Use an explicit project selector for bounded re-verification, or
+`--all-projects` for reviewed broad maintenance. This makes the default
+render-only dry-run deterministic and avoids timestamp-only index churn.
+
 Apply requires an explicit flag. Review a dry-run before applying broad changes:
 
 ```powershell
@@ -53,6 +59,11 @@ Refresh writes bounded compact fields instead of raw long project state:
 - `compact_anchor`
 - `routing_hint`
 
+Cards label human-controlled retention and observed activity separately, for
+example `Retention: warm; activity: idle`. Activity records recent filesystem
+or memory evidence; it is not a declaration that a project is the current
+authoritative workbench.
+
 For stale projects, global cards do not render detailed stage/objective/anchor state. They show a stable routing identity plus a short stale warning pointing to canonical project memory.
 
 Validation fails before dry-run/apply succeeds if a card exceeds its cap, contains obvious operational run details, changes retention status, or newly writes long raw fields such as `current_stage`, `immediate_objective`, or `next_step_anchor`.
@@ -71,8 +82,38 @@ Refresh preserves:
 - retention status
 - unknown JSON fields
 - unknown provenance strings
-- `Shared Lessons`
-- `Routing Notes`
+- the complete marker-bounded `MANUAL_RULES` block
+
+## Global Memory Ownership Markers
+
+New global-memory scaffolds contain two ownership blocks:
+
+```text
+<!-- MANUAL_RULES:BEGIN -->
+## Global Hot Rules
+## Deep Memory Routing
+## Deferred Deep Migration
+<!-- MANUAL_RULES:END -->
+
+<!-- GENERATED_PROJECT_CARDS:BEGIN source=projects_index.jsonl DO_NOT_EDIT -->
+## Active Projects
+## Warm Projects
+## Cold Projects
+## Archived Projects
+<!-- GENERATED_PROJECT_CARDS:END -->
+```
+
+Refresh replaces only the four project sections inside
+`GENERATED_PROJECT_CARDS`. The section parser stops at either the next level-2
+heading or a valid `...:END` marker, so the final Archived section cannot erase
+the generated-block terminator.
+
+If any ownership marker is present, validation requires all four markers
+exactly once, in order, with every project header inside the generated block.
+The `MANUAL_RULES` substring must be unchanged after rendering. A malformed
+layout returns `validation_failed` and writes no global/index file, backup, or
+refresh report. Legacy unmarked files remain supported until an explicitly
+reviewed maintenance migration adds the ownership blocks.
 
 Refresh separates:
 

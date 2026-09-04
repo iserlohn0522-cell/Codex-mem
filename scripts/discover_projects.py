@@ -13,8 +13,10 @@ from typing import Any
 from memory_common import (
     IGNORE_DIR_NAMES,
     canonical_path_key,
+    default_global_memory_root,
     git_root_for,
     load_jsonl,
+    path_for_local_access,
     parse_project_memory,
     resolved_path_key,
 )
@@ -37,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--global-memory-root",
-        default=str(Path.home() / ".codex" / "memory" / "codex-mem"),
+        default=str(default_global_memory_root()),
         help="Directory containing projects_index.jsonl.",
     )
     parser.add_argument("--current-project", help="Current project root, if known.")
@@ -65,20 +67,24 @@ def load_config_roots(path: str | None) -> list[str]:
 
 
 def project_from_root(root: Path, source: str, existing_record: dict[str, Any] | None = None) -> DiscoveredProject:
-    memory_path = root / "project_memory.md"
-    stage_log_path = root / "project_stage_log.md"
-    parsed = parse_project_memory(memory_path)
     record = existing_record or {}
+    root_display = str(record.get("root_path") or root)
+    root_access = path_for_local_access(root_display)
+    memory_display = str(record.get("memory_path") or root_access / "project_memory.md")
+    stage_log_display = str(record.get("stage_log_path") or root_access / "project_stage_log.md")
+    memory_path = path_for_local_access(memory_display)
+    stage_log_path = path_for_local_access(stage_log_display)
+    parsed = parse_project_memory(memory_path)
     project = parsed.get("project") or record.get("project") or root.name
     summary = parsed.get("summary") or record.get("summary", "")
-    git_root = git_root_for(root)
+    git_root = git_root_for(root_access)
     return DiscoveredProject(
         project=str(project),
-        root_path=str(root),
-        memory_path=str(record.get("memory_path") or memory_path),
-        stage_log_path=str(record.get("stage_log_path") or stage_log_path),
+        root_path=root_display,
+        memory_path=memory_display,
+        stage_log_path=stage_log_display,
         git_root=str(git_root) if git_root else "",
-        exists=root.exists() and memory_path.exists(),
+        exists=root_access.exists() and memory_path.exists(),
         source=source,
         status=str(record.get("status") or record.get("retention_status") or "active"),
         summary=str(summary),
@@ -88,10 +94,10 @@ def project_from_root(root: Path, source: str, existing_record: dict[str, Any] |
 def root_from_record(record: dict[str, Any]) -> Path | None:
     root = record.get("root_path")
     if root:
-        return Path(str(root))
+        return path_for_local_access(str(root))
     memory_path = record.get("memory_path")
     if memory_path:
-        return Path(str(memory_path)).parent
+        return path_for_local_access(str(memory_path)).parent
     return None
 
 
@@ -181,14 +187,17 @@ def discover_projects(
         add(project_from_root(root, "projects_index.jsonl", record))
 
     if current_project:
-        add(project_from_root(Path(current_project), "current-project"))
+        add(project_from_root(path_for_local_access(current_project), "current-project"))
     else:
         cwd = Path.cwd()
         if (cwd / "project_memory.md").exists():
             add(project_from_root(cwd, "current-project"))
 
     configured_roots = load_config_roots(config_path)
-    explicit_roots = [Path(root) for root in (workspace_roots or []) + configured_roots]
+    explicit_roots = [
+        path_for_local_access(root)
+        for root in (workspace_roots or []) + configured_roots
+    ]
     for workspace_root in explicit_roots:
         for root in bounded_project_memory_search(workspace_root, max_depth):
             add(project_from_root(root, f"workspace-root:{workspace_root}"))

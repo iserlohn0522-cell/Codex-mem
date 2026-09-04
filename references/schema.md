@@ -87,6 +87,8 @@ Rules:
 - preserve unknown future `source` strings
 - do not use observations as a raw run log
 - supersede stale records instead of appending duplicates
+- write `supersedes` as `list[str]`; readers may treat a legacy empty string as
+  an empty list, but new records must not emit the string form
 
 ### `.codex-mem/execution_pointers.json`
 
@@ -110,16 +112,44 @@ This file is non-canonical. Refresh it on failure or explicit request.
 
 Compressed routing memory across projects.
 
-Sections:
+Handwritten sections live inside an explicit ownership block:
 
-1. `Active Projects`
-2. `Warm Projects`
-3. `Cold Projects`
-4. `Archived Projects`
-5. `Shared Lessons`
-6. `Routing Notes`
+```text
+<!-- MANUAL_RULES:BEGIN -->
+## Global Hot Rules
+## Deep Memory Routing
+## Deferred Deep Migration
+<!-- MANUAL_RULES:END -->
+```
 
-Global project cards are routing hints, not project truth. Preserve `Shared Lessons` and `Routing Notes` exactly unless explicitly authorized to change them.
+Index-generated project cards live inside a separate ownership block:
+
+```text
+<!-- GENERATED_PROJECT_CARDS:BEGIN source=projects_index.jsonl DO_NOT_EDIT -->
+## Active Projects
+## Warm Projects
+## Cold Projects
+## Archived Projects
+<!-- GENERATED_PROJECT_CARDS:END -->
+```
+
+Global project cards are routing hints, not project truth. Refresh may replace
+only the four generated project sections. It must preserve the complete
+`MANUAL_RULES` block exactly and fail closed if markers are missing, duplicated,
+misordered, or place a project section outside the generated block. Legacy
+files without markers remain readable for backward compatibility; intentional
+maintenance should migrate them to the marker-bounded layout before apply.
+
+`Deferred Deep Migration` is transitional. It keeps reviewed content visible
+until a named deep package exists; it must not become a second permanent hot
+rule list.
+
+### `deep/DG-*.md`
+
+Trigger-only, non-canonical cross-project method packages. Each package states
+its triggers, scope, reusable tests, route-change conclusions, and invalidation
+conditions. Do not store project-current hashes, job IDs, receipts, exact
+timestamps, or other run evidence in deep packages.
 
 ### `projects_index.jsonl`
 
@@ -173,6 +203,10 @@ Activity state is observed:
 - `recent`
 - `idle`
 - `missing`
+
+Generated cards label these concepts separately as `Retention` and `activity`.
+Neither label by itself establishes the current authoritative workbench; the
+short project summary and canonical project memory provide that routing role.
 
 Memory freshness is diagnostic:
 

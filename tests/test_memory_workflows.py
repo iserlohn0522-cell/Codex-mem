@@ -104,6 +104,42 @@ GLOBAL_MEMORY = """# Global Memory
 """
 
 
+MARKER_GLOBAL_MEMORY = """# Global Memory
+
+<!-- MANUAL_RULES:BEGIN -->
+## Global Hot Rules
+
+- preserve this hot rule exactly
+
+## Deep Memory Routing
+
+- preserve this deep route exactly
+
+## Deferred Deep Migration
+
+- preserve this migration item exactly
+<!-- MANUAL_RULES:END -->
+
+<!-- GENERATED_PROJECT_CARDS:BEGIN source=projects_index.jsonl DO_NOT_EDIT -->
+## Active Projects
+
+- none
+
+## Warm Projects
+
+- none
+
+## Cold Projects
+
+- none
+
+## Archived Projects
+
+- none
+<!-- GENERATED_PROJECT_CARDS:END -->
+"""
+
+
 class TempCase(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp(prefix="codex-mem-test-"))
@@ -138,10 +174,10 @@ class TempCase(unittest.TestCase):
         (root / ".codex-mem" / "observations.jsonl").write_text("", encoding="utf-8")
         return root
 
-    def make_global_root(self, records: list[dict]) -> Path:
+    def make_global_root(self, records: list[dict], global_text: str = GLOBAL_MEMORY) -> Path:
         global_root = self.tmp / "global"
         global_root.mkdir()
-        (global_root / "global_memory.md").write_text(GLOBAL_MEMORY, encoding="utf-8")
+        (global_root / "global_memory.md").write_text(global_text, encoding="utf-8")
         (global_root / "projects_index.jsonl").write_text(
             "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records),
             encoding="utf-8",
@@ -296,8 +332,13 @@ class RefreshTests(TempCase):
         self.assertFalse((global_root / "refresh_reports").exists())
 
     def test_apply_backups_preserves_fields_lessons_and_retention(self) -> None:
-        global_root, _project = self.registered_global()
-        result = run_refresh(global_root, apply=True, stamp="2026-06-18T00-00-00Z")
+        global_root, project = self.registered_global()
+        result = run_refresh(
+            global_root,
+            project_selector=str(project),
+            apply=True,
+            stamp="2026-06-18T00-00-00Z",
+        )
         self.assertEqual(result.status, "success")
         self.assertTrue(result.backups)
         records = [json.loads(line) for line in (global_root / "projects_index.jsonl").read_text(encoding="utf-8").splitlines()]
@@ -318,6 +359,64 @@ class RefreshTests(TempCase):
         result = run_refresh(global_root, apply=False, stamp="2026-06-18T00-00-01Z")
         self.assertFalse(result.global_changed)
         self.assertFalse(result.index_changed)
+
+    def test_marker_bounded_refresh_preserves_manual_block_and_is_idempotent(self) -> None:
+        project = self.make_project("MarkerAlpha", summary="marker summary")
+        records = [
+            {
+                "project": "MarkerAlpha",
+                "root_path": str(project),
+                "summary": "marker summary",
+                "status": "warm",
+                "activity_state": "idle",
+                "memory_freshness": "fresh",
+                "memory_path": str(project / "project_memory.md"),
+                "stage_log_path": str(project / "project_stage_log.md"),
+            }
+        ]
+        global_root = self.make_global_root(records, global_text=MARKER_GLOBAL_MEMORY)
+        before = (global_root / "global_memory.md").read_text(encoding="utf-8")
+        manual_before = before.split("<!-- MANUAL_RULES:BEGIN -->", 1)[1].split(
+            "<!-- MANUAL_RULES:END -->", 1
+        )[0]
+        applied = run_refresh(global_root, apply=True, stamp="2026-06-18T00-00-00Z")
+        self.assertEqual(applied.status, "success", applied.warnings)
+        after = (global_root / "global_memory.md").read_text(encoding="utf-8")
+        manual_after = after.split("<!-- MANUAL_RULES:BEGIN -->", 1)[1].split(
+            "<!-- MANUAL_RULES:END -->", 1
+        )[0]
+        self.assertEqual(manual_after, manual_before)
+        self.assertEqual(after.count("<!-- MANUAL_RULES:BEGIN -->"), 1)
+        self.assertEqual(after.count("<!-- MANUAL_RULES:END -->"), 1)
+        self.assertEqual(after.count("<!-- GENERATED_PROJECT_CARDS:BEGIN"), 1)
+        self.assertEqual(after.count("<!-- GENERATED_PROJECT_CARDS:END -->"), 1)
+        second = run_refresh(global_root, apply=False, stamp="2026-06-18T00-00-01Z")
+        self.assertEqual(second.status, "success", second.warnings)
+        self.assertFalse(second.global_changed)
+        self.assertFalse(second.index_changed)
+
+    def test_invalid_marker_layout_fails_closed(self) -> None:
+        invalid = MARKER_GLOBAL_MEMORY.replace("<!-- GENERATED_PROJECT_CARDS:END -->", "")
+        global_root = self.make_global_root([], global_text=invalid)
+        before = (global_root / "global_memory.md").read_text(encoding="utf-8")
+        result = run_refresh(global_root, apply=True, stamp="2026-06-18T00-00-00Z")
+        self.assertEqual(result.status, "validation_failed")
+        self.assertTrue(any("marker" in warning for warning in result.warnings))
+        self.assertEqual((global_root / "global_memory.md").read_text(encoding="utf-8"), before)
+
+    def test_project_card_labels_retention_and_activity_separately(self) -> None:
+        card = compact_project_card(
+            {
+                "project": "HistoricalSource",
+                "summary": "Historical provenance source",
+                "status": "warm",
+                "activity_state": "idle",
+                "memory_freshness": "fresh",
+                "memory_path": r"D:\HistoricalSource\project_memory.md",
+            }
+        )
+        self.assertIn("Retention: warm; activity: idle", card)
+        self.assertNotIn("Status:", card)
 
     def test_targeted_refresh_can_preview_and_register_unregistered_project_path(self) -> None:
         global_root, project = self.registered_global()
@@ -352,7 +451,12 @@ class RefreshTests(TempCase):
         stage_log.write_text(stage_log.read_text(encoding="utf-8") + "\nnewer activity\n", encoding="utf-8")
         future = time.time() + 120
         os.utime(stage_log, (future, future))
-        result = run_refresh(global_root, apply=True, stamp=utc_now_iso().replace(":", "-"))
+        result = run_refresh(
+            global_root,
+            project_selector=str(project),
+            apply=True,
+            stamp=utc_now_iso().replace(":", "-"),
+        )
         self.assertEqual(result.status, "success")
         record = json.loads((global_root / "projects_index.jsonl").read_text(encoding="utf-8").splitlines()[0])
         self.assertIn(record["memory_freshness"], {"fresh", "stale"})
@@ -394,7 +498,11 @@ class RefreshTests(TempCase):
                 }
             ]
         )
-        new_global, new_index, records, warnings, _changed, status = build_refresh_plan(global_root, stamp="2026-06-19T00-00-00Z")
+        new_global, new_index, records, warnings, _changed, status = build_refresh_plan(
+            global_root,
+            project_selector=str(project),
+            stamp="2026-06-19T00-00-00Z",
+        )
         self.assertEqual(status, "ok", warnings)
         card = [line for line in new_global.splitlines() if "`Gan_v3`" in line][0]
         self.assertLessEqual(len(card), 320)
@@ -448,7 +556,11 @@ class RefreshTests(TempCase):
                 }
             ]
         )
-        new_global, _new_index, _records, warnings, _changed, status = build_refresh_plan(global_root, stamp="2026-06-19T00-00-00Z")
+        new_global, _new_index, _records, warnings, _changed, status = build_refresh_plan(
+            global_root,
+            project_selector=str(project),
+            stamp="2026-06-19T00-00-00Z",
+        )
         self.assertEqual(status, "ok", warnings)
         card = [line for line in new_global.splitlines() if "`PtKB_DFT`" in line][0]
         self.assertLessEqual(len(card), 320)
@@ -472,7 +584,11 @@ class RefreshTests(TempCase):
                 }
             ]
         )
-        new_global, new_index, _records, warnings, _changed, status = build_refresh_plan(global_root, stamp="2026-06-19T00-00-00Z")
+        new_global, new_index, _records, warnings, _changed, status = build_refresh_plan(
+            global_root,
+            project_selector=str(project),
+            stamp="2026-06-19T00-00-00Z",
+        )
         self.assertEqual(status, "ok", warnings)
         record = json.loads(new_index.splitlines()[0])
         self.assertIn("current_stage", record)
@@ -512,6 +628,43 @@ class SyncTests(TempCase):
         self.assertTrue((installed / "local-only.txt").exists())
         self.assertFalse((installed / "scripts" / "__pycache__" / "tool.pyc").exists())
         self.assertIn("SKILL.md", applied.hashes)
+
+
+class SkillContractTests(unittest.TestCase):
+    def test_layered_maintenance_contract_and_native_boundary(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        skill = (repo_root / "SKILL.md").read_text(encoding="utf-8")
+        policy = (repo_root / "references" / "maintenance-policy.md").read_text(encoding="utf-8")
+        layered_path = repo_root / "references" / "layered-maintenance.md"
+        self.assertTrue(layered_path.exists())
+        layered = layered_path.read_text(encoding="utf-8")
+
+        self.assertIn("references/layered-maintenance.md", skill)
+        self.assertIn("Native Memory is Codex App-owned", skill)
+        self.assertIn("OpenViking", skill)
+        self.assertIn("layered-maintenance.md", policy)
+
+        for heading in (
+            "## Phase 1: Scope and freeze",
+            "## Phase 2: Extract and normalize",
+            "## Phase 3: Deduplicate and forget",
+            "## Phase 4: Rebalance priority",
+            "## Phase 5: Apply and verify",
+        ):
+            self.assertIn(heading, layered)
+
+        for disposition in (
+            "`hot-global`",
+            "`deep-triggered`",
+            "`routing-only`",
+            "`project-only`",
+            "`forget/supersede`",
+        ):
+            self.assertIn(disposition, layered)
+
+        self.assertIn("Codex App-owned Native Memory is out of scope", layered)
+        self.assertIn("Apply destination-first", layered)
+        self.assertIn("Project retention is a separate axis", layered)
 
 
 if __name__ == "__main__":

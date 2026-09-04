@@ -1,4 +1,7 @@
 interface:
   display_name: "Codex-mem"
-  short_description: "Lean durable project memory with remember, search, explore, report, and maintain modes."
-  default_prompt: "Use $codex-mem to maintain project_memory.md and project_stage_log.md with low drift, protected human decisions, compact searchable observations, low-overhead recall workflows, and explicit global retention-status maintenance."
+  short_description: "Durable project memory with layered promotion, forgetting, routing, and priority review."
+  default_prompt: "Use $codex-mem to maintain canonical project memory. For cross-project maintenance, extract from project truth, deduplicate and forget only non-canonical support copies, then rebalance hot, deep, routing-only, and project-only priority. Keep retention human-controlled, never modify App-owned Native Memory, and treat OpenViking only as a recall hint."
+
+policy:
+  allow_implicit_invocation: true
