@@ -1,6 +1,6 @@
 ---
 name: codex-mem
-description: "Use codex-mem for substantial new or resumed long-lived work to recover and update canonical project memory, and for explicit layered maintenance: project-to-global promotion, deduplication or forgetting, deep routing, and priority or retention review. Also trigger on codex-mem, Codex Memo, or memory skill. Skip trivial or transient work; memory never authorizes execution."
+description: "Use codex-mem for substantial or resumed long-lived work, canonical project memory, and explicit layered maintenance. Automatically use its Hellbender module for clear University of Missouri Hellbender operations: prepare, submit, monitor, transfer, diagnose, retry, or access/account/resource checks. Also route an explicit hellbender-runbook or Hellbender Runbook invocation to this module. Do not infer from generic SLURM, HPC, DFT, or ML work. Also trigger on codex-mem, Codex Memo, or memory skill. Memory never authorizes execution."
 ---
 
 # Codex-mem
@@ -20,6 +20,34 @@ Core invariant:
 - `maintain`: promote, merge, demote, forget, reprioritize, refresh, archive, repair, or review memory assets explicitly.
 
 These are workflow modes inside one skill, not separate peer skills.
+
+## Progressive Domain Modules
+
+Domain modules provide trigger-specific operating guidance without creating a
+second memory authority.
+
+### Hellbender
+
+- Treat an explicit `hellbender-runbook` or `Hellbender Runbook` invocation as
+  a legacy-name alias for this module. Do not load or recreate the former
+  Skill's second ruleset.
+- Load `references/modules/hellbender/router.md` only when the request clearly
+  targets University of Missouri Hellbender and includes an operational intent:
+  prepare, submit, monitor, transfer, diagnose, retry, or check access,
+  account, partition, walltime, quota, or resources.
+- Do not load the module for a historical mention of Hellbender, generic
+  SLURM/HPC work, ordinary DFT or ML analysis, or scientific interpretation
+  without a Hellbender operation.
+- The router progressively selects current-rule, resource, failure, incident,
+  private-access, and memory-routing references. Do not load them all by
+  default.
+- After a meaningful Hellbender task reaches an explicit operational state,
+  extract only durable project information under the normal write rules.
+  Exact jobs, commands, logs, receipts, resources, and timestamps remain in
+  project run artifacts.
+- Cross-project promotion and legacy-memory retirement remain explicit
+  `maintain` work with a candidate ledger; they are never an automatic
+  consequence of an ordinary Hellbender task.
 
 ## Authority
 
@@ -50,6 +78,10 @@ These are workflow modes inside one skill, not separate peer skills.
 - Do not store secrets, credentials, private keys, sensitive personal details, raw logs, speculative notes, or transient project facts.
 - Preserve valid provenance markers such as `[CC]` and `[AG]` when keeping the underlying fact.
 - Keep retention status human-controlled: `active`, `warm`, `cold`, `archived`.
+- For Hellbender tasks, preserve `SUCCESS`, `FAILED`, `STOPPED`,
+  `UNRESOLVED`, negative, null, and inconclusive outcomes. Never convert an
+  untested correction or scheduler completion into a resolved operational or
+  scientific conclusion.
 
 ## Global Routing
 
@@ -109,3 +141,4 @@ Read only the reference needed for the task:
 - `references/layered-maintenance.md`
 - `references/installation-sync.md`
 - `references/compatibility.md`
+- `references/modules/hellbender/router.md`

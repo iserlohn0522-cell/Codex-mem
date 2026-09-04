@@ -16,3 +16,6 @@ __pycache__/
 # Local memory artifacts
 .codex-mem/
 *.sqlite
+
+# Installed-only domain configuration
+references/modules/hellbender/private-access.md

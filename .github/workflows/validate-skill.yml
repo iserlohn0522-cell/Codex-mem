@@ -31,11 +31,19 @@ jobs:
           test -f references/update-policy.md
           test -f references/search-policy.md
           test -f references/maintenance-policy.md
+          test -f references/modules/hellbender/router.md
+          test -f references/modules/hellbender/memory-routing.md
+          test -f references/modules/hellbender/official-rules.md
+          test -f references/modules/hellbender/transfer-preflight.md
+          test -f references/modules/hellbender/cp2k.md
+          test ! -e references/modules/hellbender/private-access.md
           test -f scripts/init_project_memory.py
           test -f scripts/update_project_memory.py
           test -f scripts/update_stage_log.py
           test -f scripts/search_memory.py
           test -f scripts/generate_report.py
+          test -f scripts/hellbender/record_incident.py
+          test -f scripts/hellbender/migrate_legacy_memory.py
 
           python - <<'PY'
           from pathlib import Path
@@ -54,4 +62,7 @@ jobs:
           PY
 
       - name: Compile Python scripts
-        run: python -m py_compile scripts/*.py
+        run: python -m compileall -q scripts
+
+      - name: Run tests
+        run: python -m unittest discover -s tests

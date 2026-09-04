@@ -59,6 +59,17 @@ codex-mem/
     update-policy.md
     search-policy.md
     maintenance-policy.md
+    modules/
+      hellbender/
+        router.md
+        memory-routing.md
+        official-rules.md
+        failure-taxonomy.md
+        resource-templates.md
+        incident-schema.md
+        transfer-preflight.md
+        cp2k.md
+        private-access.example.md
   scripts/
     init_project_memory.py
     update_project_memory.py
@@ -68,6 +79,9 @@ codex-mem/
     discover_projects.py
     refresh_global_memory.py
     sync_installed_skill.py
+    hellbender/
+      record_incident.py
+      migrate_legacy_memory.py
 ```
 
 ### Project-local storage
@@ -115,6 +129,27 @@ Generate stage or journey summaries without treating reports as canonical memory
 Prune, archive, refresh, and repair memory assets explicitly.
 
 Global refresh is dry-run by default and requires `--apply` to write. It may update only global routing files, backups, and reports.
+
+## Progressive Domain Modules
+
+A domain module is a trigger-specific operating layer inside Codex-mem. It
+does not create another canonical memory file or another default-loaded global
+memory.
+
+The Hellbender module uses this loading order:
+
+1. Load only its compact router after a clear Hellbender operational trigger.
+2. Load current rules, resources, failure classification, incident schema,
+   transfer preflight, application guidance, or installed-only access
+   configuration only when the request needs them.
+3. Read project canonical memory and trigger-only DG-04 guidance as appropriate.
+4. Keep exact run evidence in project artifacts.
+5. Extract durable project state only after the task has an explicit
+   operational outcome. Route cross-project promotion through explicit
+   layered maintenance.
+
+Module loading and memory recall never authorize cluster access, submission,
+retry, cancellation, spending, cleanup, publication, or transfer.
 
 ## Non-goals
 

@@ -70,6 +70,28 @@ python scripts/update_project_memory.py --root <project-root> --section "## Curr
 
 This refresh is bounded to the registered current project. It does not scan every project and does not change retention status. If the project is unregistered, report that fact and use explicit maintain/discovery before syncing global routing.
 
+## Hellbender Task-End Extraction
+
+For a clearly scoped Hellbender operation, perform project-level extraction at
+the end of the same authorized task only when all of these are true:
+
+- the task has an explicit operational state such as `SUCCESS`, `FAILED`,
+  `STOPPED`, or `UNRESOLVED`
+- the information changes a future decision, constraint, rejected route,
+  unresolved issue, stage conclusion, or next-step anchor
+- the authoritative project root and existing canonical files are clear
+- the update preserves evidence qualifiers and does not conflict with a
+  Protected Human Decision
+
+Do not write when the task was only a transient status check or produced no
+durable change. Keep job IDs, exact commands, timestamps, requested resources,
+raw logs, receipts, and hashes in project run artifacts. If authority is
+missing or the proposition mixes operational and scientific claims, leave a
+review candidate instead of initializing or rewriting canonical memory.
+
+Cross-project promotion to global or deep memory, semantic deduplication, and
+retirement of legacy Hellbender memory are explicit `maintain` operations.
+
 ## Protected Human Decisions
 
 This policy is strict.

@@ -33,3 +33,18 @@ These are documented but intentionally not implemented in this phase:
 - profile audit or deployment
 - automatic editing of `AGENTS.md` or `CLAUDE.md`
 - vector-memory infrastructure
+
+## Legacy Hellbender Skill
+
+The former `hellbender-runbook` entrypoint may be retained temporarily as a
+router-only compatibility shim during deployment. The shim must not contain a
+second ruleset, shared memory, project memory, or incident implementation.
+
+Remove the shim from active skill discovery only after the Codex-mem module,
+legacy-memory migration, installed-copy synchronization, explicit legacy-name
+route, and rollback checks pass. Archiving the old repository or installed
+tree is a separate explicit action.
+
+After removal, the explicit `hellbender-runbook` / `Hellbender Runbook` name is
+handled by the Codex-mem Skill description and routes directly to the module;
+it does not restore a second implementation.

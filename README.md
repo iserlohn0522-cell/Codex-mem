@@ -51,6 +51,32 @@ Key scripts:
 - `scripts/discover_projects.py`
 - `scripts/refresh_global_memory.py`
 - `scripts/sync_installed_skill.py`
+- `scripts/hellbender/record_incident.py`
+- `scripts/hellbender/migrate_legacy_memory.py`
+
+## Progressive Hellbender Module
+
+Codex-mem includes an on-demand University of Missouri Hellbender operations
+module under `references/modules/hellbender/`. It is loaded only for a clear
+Hellbender operational request, not for a generic SLURM, HPC, DFT, or ML
+mention.
+
+The module keeps four kinds of information separate:
+
+- durable project state in `project_memory.md` and `project_stage_log.md`
+- cross-project reusable method guidance in the trigger-only DG-04 package
+- current cluster rules and private access details in on-demand references
+- exact jobs, logs, commands, receipts, and resource evidence in project run
+  artifacts
+
+The router can additionally load `transfer-preflight.md` for Windows-to-remote
+or container-boundary work and `cp2k.md` for CP2K-specific operational
+diagnosis. Neither file is loaded for ordinary scientific interpretation.
+
+Task-end extraction may update durable project memory when the operational
+state is explicit and the project authority is clear. Cross-project promotion,
+deduplication, and retirement of legacy `.hellbender-project-memory.md` files
+remain preview-first `maintain` work.
 
 ## Project Discovery
 
@@ -130,7 +156,7 @@ The sync script creates a timestamped installed-tree backup, preserves installed
 Run:
 
 ```powershell
-python -m py_compile scripts/*.py
+python -m compileall -q scripts
 python -m unittest discover -s tests
 ```
 
@@ -138,4 +164,7 @@ The GitHub workflow also verifies the skill layout and core invariant.
 
 ## Deferred
 
-This phase intentionally does not implement native-memory extraction, Chronicle ingestion, hooks, background scheduling, Headroom integration, profile deployment, automatic edits to `AGENTS.md` or `CLAUDE.md`, or vector-memory infrastructure.
+This phase intentionally does not implement native-memory extraction,
+Chronicle ingestion, hooks, background scheduling, Headroom integration,
+profile deployment, automatic edits to `AGENTS.md` or `CLAUDE.md`, automatic
+cross-project Hellbender promotion, or vector-memory infrastructure.
