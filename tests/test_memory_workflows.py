@@ -609,7 +609,8 @@ class RefreshTests(TempCase):
 class SyncTests(TempCase):
     def test_installed_tree_backup_and_sync_fixture(self) -> None:
         repo = self.tmp / "repo"
-        installed = self.tmp / "installed"
+        installed = self.tmp / "active" / "skills" / "codex-mem"
+        backups = self.tmp / "archives" / "backups"
         (repo / "scripts").mkdir(parents=True)
         (repo / "references").mkdir()
         (repo / "agents").mkdir()
@@ -617,17 +618,46 @@ class SyncTests(TempCase):
         (repo / "scripts" / "tool.py").write_text("print('ok')\n", encoding="utf-8")
         (repo / "scripts" / "__pycache__").mkdir()
         (repo / "scripts" / "__pycache__" / "tool.pyc").write_bytes(b"cache")
-        installed.mkdir()
+        installed.mkdir(parents=True)
         (installed / "local-only.txt").write_text("keep", encoding="utf-8")
-        dry = sync_installed_skill(repo, installed, backup_root=self.tmp / "backups", apply=False)
+        dry = sync_installed_skill(repo, installed, backup_root=backups, apply=False)
         self.assertEqual(dry.status, "success")
         self.assertEqual(dry.copied_files, [])
-        applied = sync_installed_skill(repo, installed, backup_root=self.tmp / "backups", apply=True, stamp="stamp")
+        applied = sync_installed_skill(repo, installed, backup_root=backups, apply=True, stamp="stamp")
         self.assertTrue(applied.backup_path)
         self.assertTrue((installed / "SKILL.md").exists())
         self.assertTrue((installed / "local-only.txt").exists())
         self.assertFalse((installed / "scripts" / "__pycache__" / "tool.pyc").exists())
         self.assertIn("SKILL.md", applied.hashes)
+
+    def test_default_backup_is_outside_active_skill_discovery_root(self) -> None:
+        repo = self.tmp / "repo"
+        installed = self.tmp / ".agents" / "skills" / "codex-mem"
+        repo.mkdir()
+        installed.mkdir(parents=True)
+        (repo / "SKILL.md").write_text("---\nname: codex-mem\n---\n", encoding="utf-8")
+        (installed / "SKILL.md").write_text("old\n", encoding="utf-8")
+
+        applied = sync_installed_skill(repo, installed, apply=True, stamp="stamp")
+
+        expected_root = self.tmp / ".agents" / "skill-archives" / "codex-mem-install-backups"
+        self.assertEqual(Path(applied.backup_path).parent, expected_root)
+        self.assertEqual(Path(applied.report_path).parent, expected_root)
+
+    def test_backup_inside_active_skill_discovery_root_is_rejected(self) -> None:
+        repo = self.tmp / "repo"
+        installed = self.tmp / ".agents" / "skills" / "codex-mem"
+        repo.mkdir()
+        installed.mkdir(parents=True)
+        (repo / "SKILL.md").write_text("---\nname: codex-mem\n---\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(SystemExit, "outside the active skill discovery root"):
+            sync_installed_skill(
+                repo,
+                installed,
+                backup_root=installed.parent / "codex-mem-install-backups",
+                apply=False,
+            )
 
 
 class SkillContractTests(unittest.TestCase):

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -77,6 +78,26 @@ def installed_only_files(repo_root: Path, installed_root: Path) -> list[str]:
     return sorted(found)
 
 
+def safe_backup_root(installed_root: Path, backup_root: Path | None) -> Path:
+    discovery_root = installed_root.parent.expanduser().resolve(strict=False)
+    selected = backup_root or (
+        installed_root.parent.parent
+        / "skill-archives"
+        / f"{installed_root.name}-install-backups"
+    )
+    selected = selected.expanduser().resolve(strict=False)
+    try:
+        common = Path(os.path.commonpath((discovery_root, selected)))
+    except ValueError:
+        return selected
+    if os.path.normcase(str(common)) == os.path.normcase(str(discovery_root)):
+        raise SystemExit(
+            "Backup root must be outside the active skill discovery root: "
+            f"{discovery_root}"
+        )
+    return selected
+
+
 def sync_installed_skill(
     repo_root: Path,
     installed_root: Path,
@@ -87,7 +108,7 @@ def sync_installed_skill(
     if not (repo_root / "SKILL.md").exists():
         raise SystemExit(f"Repository root is missing SKILL.md: {repo_root}")
     stamp = stamp or utc_now_iso().replace(":", "-")
-    backup_root = backup_root or installed_root.parent / "codex-mem-install-backups"
+    backup_root = safe_backup_root(installed_root, backup_root)
     files = iter_sync_files(repo_root)
     preserved = installed_only_files(repo_root, installed_root)
     copied: list[str] = []

@@ -149,7 +149,10 @@ After repository tests pass, synchronize the installed skill with:
 python scripts/sync_installed_skill.py --repo-root C:\path\to\Codex-mem --installed-root C:\path\to\installed\codex-mem --apply
 ```
 
-The sync script creates a timestamped installed-tree backup, preserves installed-only files, and records hashes for synchronized files.
+The sync script creates a timestamped installed-tree backup under a sibling
+`skill-archives` tree, preserves installed-only files, and records hashes for
+synchronized files. It rejects any `--backup-root` inside the active `skills`
+directory so backups cannot become duplicate discoverable Skills.
 
 ## Validation
 

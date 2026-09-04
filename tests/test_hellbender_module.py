@@ -320,7 +320,8 @@ class LegacyMigrationDryRunTests(TempCase):
 class HellbenderSyncBoundaryTests(TempCase):
     def test_nested_module_sync_preserves_installed_private_access(self) -> None:
         repo = self.tmp / "repo"
-        installed = self.tmp / "installed"
+        installed = self.tmp / "active" / "skills" / "codex-mem"
+        backups = self.tmp / "archive" / "backups"
         module = repo / "references" / "modules" / "hellbender"
         module.mkdir(parents=True)
         (repo / "SKILL.md").write_text("---\nname: codex-mem\n---\n", encoding="utf-8")
@@ -330,12 +331,12 @@ class HellbenderSyncBoundaryTests(TempCase):
         private = installed_module / "private-access.md"
         private.write_text("# local only\n", encoding="utf-8")
 
-        dry = sync_installed_skill(repo, installed, backup_root=self.tmp / "backups")
+        dry = sync_installed_skill(repo, installed, backup_root=backups)
         self.assertIn(str(private), dry.preserved_installed_only)
         applied = sync_installed_skill(
             repo,
             installed,
-            backup_root=self.tmp / "backups",
+            backup_root=backups,
             apply=True,
             stamp="stamp",
         )
